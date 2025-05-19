@@ -26,87 +26,27 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
-// Sample product data
-const products = [
-  {
-    id: 1,
-    name: "Premium Oil Filter",
-    sku: "OIL-FLT-001",
-    category: "Filters",
-    price: 12.99,
-    stock: 45,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 2,
-    name: "Brake Pads (Front)",
-    sku: "BRK-PAD-001",
-    category: "Brakes",
-    price: 49.99,
-    stock: 32,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 3,
-    name: "Windshield Wipers",
-    sku: "WIP-BLD-001",
-    category: "Exterior",
-    price: 24.99,
-    stock: 78,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 4,
-    name: "Air Filter",
-    sku: "AIR-FLT-001",
-    category: "Filters",
-    price: 15.99,
-    stock: 56,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 5,
-    name: "Spark Plugs",
-    sku: "SPK-PLG-001",
-    category: "Ignition",
-    price: 8.99,
-    stock: 120,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 6,
-    name: "Engine Oil 5W-30",
-    sku: "OIL-ENG-001",
-    category: "Fluids",
-    price: 32.99,
-    stock: 65,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 7,
-    name: "Headlight Bulbs",
-    sku: "LGT-BLB-001",
-    category: "Lighting",
-    price: 19.99,
-    stock: 42,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 8,
-    name: "Transmission Fluid",
-    sku: "FLD-TRN-001",
-    category: "Fluids",
-    price: 22.99,
-    stock: 38,
-    image: "/placeholder.svg",
-  },
-]
+import { useProducts } from "@/hooks/use-products"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import type { FirestoreData } from "@/firebase/firestore"
+import type { Product } from "@/types/firestore"
 
 export default function ProductsPage() {
+  const { products, loading, error, deleteProduct } = useProducts()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [sortBy, setSortBy] = useState("name-asc")
+  const [productToDelete, setProductToDelete] = useState<FirestoreData<Product> | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Filter products based on search term and category
   const filteredProducts = products.filter((product) => {
@@ -140,6 +80,72 @@ export default function ProductsPage() {
 
   // Get unique categories for filter dropdown
   const categories = ["all", ...new Set(products.map((product) => product.category))]
+
+  const handleDeleteProduct = async () => {
+    if (!productToDelete) return
+
+    setIsDeleting(true)
+    try {
+      await deleteProduct(productToDelete.id, productToDelete.name)
+      setProductToDelete(null)
+    } catch (error) {
+      console.error("Error deleting product:", error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Products</h2>
+          <Button asChild>
+            <Link href="/products/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Add New Product
+            </Link>
+          </Button>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Management</CardTitle>
+            <CardDescription>Loading products...</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex justify-center py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Products</h2>
+          <Button asChild>
+            <Link href="/products/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Add New Product
+            </Link>
+          </Button>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Error</CardTitle>
+            <CardDescription>Failed to load products</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md bg-destructive/10 p-4 text-destructive">{error}</div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -228,7 +234,7 @@ export default function ProductsPage() {
                     <TableRow key={product.id}>
                       <TableCell>
                         <Image
-                          src={product.image || "/placeholder.svg"}
+                          src={product.imageBase64 || "/placeholder.svg"}
                           alt={product.name}
                           width={40}
                           height={40}
@@ -264,9 +270,9 @@ export default function ProductsPage() {
                               <Link href={`/products/${product.id}/edit`}>Edit Product</Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onClick={() => setProductToDelete(product)}>
                               <Trash2 className="mr-2 h-4 w-4 text-destructive" />
-                              <span className="text-destructive">Delete</span>
+                              <span>Delete</span>
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -308,6 +314,28 @@ export default function ProductsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Product Confirmation Dialog */}
+      <AlertDialog open={!!productToDelete} onOpenChange={(open) => !open && setProductToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the product "{productToDelete?.name}". This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteProduct}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

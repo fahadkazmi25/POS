@@ -1,89 +1,196 @@
 "use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Car, Edit, FileText, Mail, Phone } from "lucide-react"
+import { ArrowLeft, Car, Edit, Mail, Phone, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useToast } from "@/components/ui/use-toast"
+import { useCustomers } from "@/hooks/use-customers"
+import type { Customer, Vehicle } from "@/types/firestore"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+// import { VehicleForm } from "@/components/vehicle-form"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 export default function CustomerDetailsPage({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const customerId = params.id
+  const { id: customerId } = params
+  const { customers, loading, error, deleteCustomer, addVehicleToCustomer, deleteVehicle } = useCustomers()
+  const [customer, setCustomer] = useState<Customer | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isAddingVehicle, setIsAddingVehicle] = useState(false)
+  const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null)
+  const { toast } = useToast()
 
-  // This would normally be fetched from an API
-  const customer = {
-    id: Number.parseInt(customerId),
-    name: "John Smith",
-    email: "john.smith@example.com",
-    phone: "555-123-4567",
-    address: "123 Main St, Anytown, CA 12345",
-    totalPurchases: 1245.67,
-    lastPurchase: "2023-05-15",
-    status: "active",
-    outstandingBalance: 0,
-    joinDate: "2022-03-10",
-    vehicles: [
-      {
-        id: 1,
-        make: "Toyota",
-        model: "Camry",
-        year: 2018,
-        vin: "1HGCM82633A123456",
-        licensePlate: "ABC-1234",
-      },
-      {
-        id: 2,
-        make: "Honda",
-        model: "Civic",
-        year: 2020,
-        vin: "2HGFC2F52LH123456",
-        licensePlate: "XYZ-7890",
-      },
-    ],
-    purchaseHistory: [
-      {
-        id: "INV-001",
-        date: "2023-05-15",
-        amount: 149.99,
-        status: "paid",
-        items: ["Oil Change", "Air Filter", "Wiper Blades"],
-      },
-      {
-        id: "INV-002",
-        date: "2023-04-02",
-        amount: 567.8,
-        status: "paid",
-        items: ["Brake Pads", "Rotors", "Labor"],
-      },
-      {
-        id: "INV-003",
-        date: "2023-02-18",
-        amount: 89.99,
-        status: "paid",
-        items: ["Oil Change", "Tire Rotation"],
-      },
-      {
-        id: "INV-004",
-        date: "2022-12-05",
-        amount: 437.89,
-        status: "paid",
-        items: ["Battery Replacement", "Alternator Check", "Labor"],
-      },
-    ],
-    notes: "Prefers appointments on weekends. Always asks for synthetic oil.",
+  // Find the customer in the customers array
+  useEffect(() => {
+    if (!loading && customers.length > 0) {
+      const foundCustomer = customers.find((c) => c.id === customerId)
+      if (foundCustomer) {
+        setCustomer(foundCustomer)
+      }
+    }
+  }, [customerId, customers, loading])
+
+  // Handle customer deletion
+  const handleDeleteCustomer = async () => {
+    if (!customer) return
+
+    setIsDeleting(true)
+    try {
+      await deleteCustomer(customerId)
+      toast({
+        title: "Customer Deleted",
+        description: "The customer has been successfully deleted.",
+      })
+      router.push("/customers")
+    } catch (error) {
+      console.error("Error deleting customer:", error)
+      toast({
+        title: "Error",
+        description: "There was an error deleting the customer. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Handle vehicle deletion
+  const handleDeleteVehicle = async () => {
+    if (!customer || !vehicleToDelete) return
+
+    try {
+      await deleteVehicle(customerId, vehicleToDelete)
+      toast({
+        title: "Vehicle Deleted",
+        description: "The vehicle has been successfully deleted.",
+      })
+      setVehicleToDelete(null)
+    } catch (error) {
+      console.error("Error deleting vehicle:", error)
+      toast({
+        title: "Error",
+        description: "There was an error deleting the vehicle. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Handle adding a new vehicle
+  const handleAddVehicle = async (vehicle: Omit<Vehicle, "id">) => {
+    try {
+      await addVehicleToCustomer(customerId, vehicle)
+      setIsAddingVehicle(false)
+      toast({
+        title: "Vehicle Added",
+        description: "The vehicle has been successfully added.",
+      })
+    } catch (error) {
+      console.error("Error adding vehicle:", error)
+      toast({
+        title: "Error",
+        description: "There was an error adding the vehicle. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   // Format date
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return "N/A"
+
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
     return new Intl.DateTimeFormat("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
     }).format(date)
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10" />
+          <Skeleton className="h-10 w-40" />
+          <Skeleton className="h-6 w-20" />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-7">
+          <div className="md:col-span-2 flex flex-col gap-4">
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-40" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-6 w-full" />
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="md:col-span-5">
+            <Skeleton className="h-[500px] w-full" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error || !customer) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" asChild>
+            <Link href="/customers">
+              <ArrowLeft className="h-4 w-4" />
+              <span className="sr-only">Back</span>
+            </Link>
+          </Button>
+          <h2 className="text-3xl font-bold tracking-tight">Customer Not Found</h2>
+        </div>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center justify-center text-center">
+              <h3 className="text-lg font-semibold text-destructive">
+                {error || "Customer not found or has been deleted."}
+              </h3>
+              <Button className="mt-4" asChild>
+                <Link href="/customers">Return to Customers</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -99,13 +206,35 @@ export default function CustomerDetailsPage({ params }: { params: { id: string }
         <Badge variant={customer.status === "active" ? "default" : "secondary"}>
           {customer.status.charAt(0).toUpperCase() + customer.status.slice(1)}
         </Badge>
-        <div className="ml-auto">
-          <Button asChild>
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" asChild>
             <Link href={`/customers/${customerId}/edit`}>
               <Edit className="mr-2 h-4 w-4" />
-              Edit Customer
+              Edit
             </Link>
           </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the customer and all associated data.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteCustomer} disabled={isDeleting}>
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
@@ -128,11 +257,15 @@ export default function CustomerDetailsPage({ params }: { params: { id: string }
                   {customer.phone}
                 </a>
               </div>
-              <Separator />
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Address</p>
-                <p className="text-sm text-muted-foreground">{customer.address}</p>
-              </div>
+              {customer.address && (
+                <>
+                  <Separator />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Address</p>
+                    <p className="text-sm text-muted-foreground">{customer.address}</p>
+                  </div>
+                </>
+              )}
               <Separator />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -141,14 +274,16 @@ export default function CustomerDetailsPage({ params }: { params: { id: string }
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Last Purchase</p>
-                  <p className="text-sm text-muted-foreground">{formatDate(customer.lastPurchase)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {customer.lastPurchase ? formatDate(customer.lastPurchase) : "Never"}
+                  </p>
                 </div>
               </div>
               <Separator />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Total Purchases</p>
-                  <p className="text-sm font-semibold">${customer.totalPurchases.toFixed(2)}</p>
+                  <p className="text-sm font-semibold">${customer.totalPurchases?.toFixed(2) || "0.00"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Outstanding Balance</p>
@@ -168,47 +303,93 @@ export default function CustomerDetailsPage({ params }: { params: { id: string }
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Vehicles</CardTitle>
-              <CardDescription>Registered vehicles for this customer</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Vehicles</CardTitle>
+                <CardDescription>Registered vehicles for this customer</CardDescription>
+              </div>
+              <Dialog open={isAddingVehicle} onOpenChange={setIsAddingVehicle}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Vehicle
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Vehicle</DialogTitle>
+                    <DialogDescription>Enter the vehicle details below.</DialogDescription>
+                  </DialogHeader>
+                  {/* <VehicleForm onSubmit={handleAddVehicle} onCancel={() => setIsAddingVehicle(false)} /> */}
+                </DialogContent>
+              </Dialog>
             </CardHeader>
             <CardContent className="space-y-4">
-              {customer.vehicles.map((vehicle) => (
-                <div key={vehicle.id} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Car className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-medium">
-                      {vehicle.year} {vehicle.make} {vehicle.model}
-                    </p>
+              {customer.vehicles && customer.vehicles.length > 0 ? (
+                customer.vehicles.map((vehicle) => (
+                  <div key={vehicle.id} className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Car className="h-4 w-4 text-muted-foreground" />
+                        <p className="text-sm font-medium">
+                          {vehicle.year} {vehicle.make} {vehicle.model}
+                        </p>
+                      </div>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            onClick={() => setVehicleToDelete(vehicle.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                            <span className="sr-only">Delete Vehicle</span>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Vehicle</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete this vehicle? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setVehicleToDelete(null)}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteVehicle}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                      <div>VIN: {vehicle.vin}</div>
+                      <div>License: {vehicle.licensePlate}</div>
+                    </div>
+                    {customer?.vehicles.indexOf(vehicle) < customer?.vehicles.length - 1 && (
+                      <Separator className="my-2" />
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                    <div>VIN: {vehicle.vin}</div>
-                    <div>License: {vehicle.licensePlate}</div>
-                  </div>
-                  {customer.vehicles.indexOf(vehicle) < customer.vehicles.length - 1 && <Separator className="my-2" />}
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <Car className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">No vehicles registered</p>
+                  <p className="text-xs text-muted-foreground">Click the Add Vehicle button to register a vehicle</p>
                 </div>
-              ))}
+              )}
             </CardContent>
-            <CardFooter>
-              <Button variant="outline" size="sm" className="w-full">
-                Add Vehicle
-              </Button>
-            </CardFooter>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{customer.notes}</p>
-            </CardContent>
-            <CardFooter>
-              <Button variant="outline" size="sm" className="w-full">
-                Edit Notes
-              </Button>
-            </CardFooter>
-          </Card>
+          {customer.notes && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">{customer.notes}</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="md:col-span-5">
@@ -224,49 +405,32 @@ export default function CustomerDetailsPage({ params }: { params: { id: string }
                   <CardDescription>View all purchases made by this customer</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Invoice</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Items</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {customer.purchaseHistory.map((purchase) => (
-                        <TableRow key={purchase.id}>
-                          <TableCell className="font-medium">{purchase.id}</TableCell>
-                          <TableCell>{formatDate(purchase.date)}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {purchase.items.map((item, index) => (
-                                <Badge key={index} variant="outline">
-                                  {item}
-                                </Badge>
-                              ))}
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Items</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-24 text-center">
+                            <div className="flex flex-col items-center justify-center">
+                              <p className="text-sm text-muted-foreground">No purchase history found</p>
+                              <Button className="mt-4" size="sm" asChild>
+                                <Link href={`/pos?customer=${customerId}`}>Create New Sale</Link>
+                              </Button>
                             </div>
                           </TableCell>
-                          <TableCell>${purchase.amount.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge variant={purchase.status === "paid" ? "success" : "warning"}>
-                              {purchase.status.charAt(0).toUpperCase() + purchase.status.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="outline" size="sm" asChild>
-                              <Link href={`/invoices/${purchase.id}`}>
-                                <FileText className="mr-2 h-4 w-4" />
-                                View
-                              </Link>
-                            </Button>
-                          </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -277,44 +441,31 @@ export default function CustomerDetailsPage({ params }: { params: { id: string }
                   <CardDescription>View and manage all invoices for this customer</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Invoice</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {customer.purchaseHistory.map((purchase) => (
-                        <TableRow key={purchase.id}>
-                          <TableCell className="font-medium">{purchase.id}</TableCell>
-                          <TableCell>{formatDate(purchase.date)}</TableCell>
-                          <TableCell>${purchase.amount.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Badge variant={purchase.status === "paid" ? "success" : "warning"}>
-                              {purchase.status.charAt(0).toUpperCase() + purchase.status.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button variant="outline" size="sm" asChild>
-                                <Link href={`/invoices/${purchase.id}`}>View</Link>
-                              </Button>
-                              <Button variant="outline" size="sm">
-                                Print
-                              </Button>
-                              <Button variant="outline" size="sm">
-                                Email
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-24 text-center">
+                            <div className="flex flex-col items-center justify-center">
+                              <p className="text-sm text-muted-foreground">No invoices found</p>
+                              <Button className="mt-4" size="sm" asChild>
+                                <Link href={`/invoices/new?customer=${customerId}`}>Create New Invoice</Link>
                               </Button>
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

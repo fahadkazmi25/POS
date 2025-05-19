@@ -130,10 +130,10 @@ export function Sidebar({ className }: SidebarProps) {
         )}
       >
         <div className="flex h-16 items-center border-b px-4">
-          <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
+         {isOpen && <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
             <CreditCard className="h-6 w-6" />
-            {isOpen && <span>POS System</span>}
-          </Link>
+             <span>POS System</span>
+          </Link>}
           <Button variant="ghost" size="icon" className="ml-auto" onClick={toggleSidebar}>
             {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             <span className="sr-only">Toggle Sidebar</span>

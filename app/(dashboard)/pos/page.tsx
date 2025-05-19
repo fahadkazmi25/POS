@@ -1,261 +1,413 @@
 "use client"
 
 import { useState } from "react"
-import Image from "next/image"
-import { Minus, Plus, Search, ShoppingCart, X } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog"
-
-// Sample product data
-const products = [
-  {
-    id: 1,
-    name: "Premium Oil Filter",
-    category: "Filters",
-    price: 12.99,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 2,
-    name: "Brake Pads (Front)",
-    category: "Brakes",
-    price: 49.99,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 3,
-    name: "Windshield Wipers",
-    category: "Exterior",
-    price: 24.99,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 4,
-    name: "Air Filter",
-    category: "Filters",
-    price: 15.99,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 5,
-    name: "Spark Plugs",
-    category: "Ignition",
-    price: 8.99,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 6,
-    name: "Engine Oil 5W-30",
-    category: "Fluids",
-    price: 32.99,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 7,
-    name: "Headlight Bulbs",
-    category: "Lighting",
-    price: 19.99,
-    image: "/placeholder.svg",
-  },
-  {
-    id: 8,
-    name: "Transmission Fluid",
-    category: "Fluids",
-    price: 22.99,
-    image: "/placeholder.svg",
-  },
-]
-
-// Sample customer data
-const customers = [
-  { id: 1, name: "John Smith", email: "john.smith@example.com", phone: "555-123-4567" },
-  { id: 2, name: "Jane Doe", email: "jane.doe@example.com", phone: "555-987-6543" },
-  { id: 3, name: "Bob Johnson", email: "bob.johnson@example.com", phone: "555-456-7890" },
-]
-
-// Sample categories
-const categories = ["All", "Filters", "Brakes", "Exterior", "Ignition", "Fluids", "Lighting"]
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useProducts } from "@/hooks/use-products"
+import { useCustomers } from "@/hooks/use-customers"
+import { useSales } from "@/hooks/use-sales"
+import { useInvoices } from "@/hooks/use-invoices"
+import type { Product, Customer, SaleItem } from "@/types/firestore"
+import { Loader2, Search, Plus, Trash2, AlertCircle, ShoppingCart, User, Receipt } from "lucide-react"
+import { Timestamp } from "firebase/firestore"
+import { Textarea } from "@/components/ui/textarea"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 type CartItem = {
-  id: number
-  name: string
-  price: number
+  product: Product
   quantity: number
-  image: string
+  subtotal: number
 }
 
 export default function POSPage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All")
+  const { products, loading: productsLoading } = useProducts()
+  const { customers, loading: customersLoading } = useCustomers()
+  const { addSale } = useSales()
+  const { addInvoice } = useInvoices()
+  const { toast } = useToast()
+  const router = useRouter()
+
+  const [activeTab, setActiveTab] = useState("all")
+  const [searchQuery, setSearchQuery] = useState("")
   const [cart, setCart] = useState<CartItem[]>([])
-  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null)
-  const [discountPercent, setDiscountPercent] = useState(0)
-  const [taxPercent, setTaxPercent] = useState(8.25) // Default tax rate
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("")
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState("cash")
+  const [notes, setNotes] = useState("")
   const [isCompletingSale, setIsCompletingSale] = useState(false)
+  const [saleError, setSaleError] = useState<string | null>(null)
+  const [discount, setDiscount] = useState(0)
+  const [tax, setTax] = useState(0)
 
-  // Filter products based on search term and category
+  // Calculate totals
+  const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0)
+  const discountAmount = (subtotal * discount) / 100
+  const taxAmount = ((subtotal - discountAmount) * tax) / 100
+  const total = subtotal - discountAmount + taxAmount
+
+  // Filter products based on search and category
   const filteredProducts = products.filter((product) => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = selectedCategory === "All" || product.category === selectedCategory
-
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.sku?.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesCategory = activeTab === "all" || product.category === activeTab
     return matchesSearch && matchesCategory
   })
 
+  // Get unique categories for tabs
+  const categories = ["all", ...new Set(products.map((product) => product.category || "uncategorized"))]
+
+  // Filter customers based on search
+  const filteredCustomers = customers.filter((customer) => {
+    return (
+      customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+      customer.email.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+      customer.phone.toLowerCase().includes(customerSearchQuery.toLowerCase())
+    )
+  })
+
+  // Handle customer selection
+  const handleSelectCustomer = (customer: Customer) => {
+    setSelectedCustomer(customer)
+    setCustomerSearchQuery("")
+    setCustomerDialogOpen(false) // Close the dialog after selection
+  }
+
   // Add product to cart
-  const addToCart = (product: (typeof products)[0]) => {
+  const addToCart = (product: Product) => {
+    if (!product.stock || product.stock <= 0) {
+      toast({
+        title: "Out of Stock",
+        description: `${product.name} is currently out of stock.`,
+        variant: "destructive",
+      })
+      return
+    }
+
     setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === product.id)
+      const existingItem = prevCart.find((item) => item.product.id === product.id)
 
       if (existingItem) {
-        return prevCart.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item))
+        // Check if adding one more would exceed stock
+        if (existingItem.quantity + 1 > (product.stock || 0)) {
+          toast({
+            title: "Insufficient Stock",
+            description: `Only ${product.stock} units of ${product.name} available.`,
+            variant: "destructive",
+          })
+          return prevCart
+        }
+
+        // Update quantity of existing item
+        return prevCart.map((item) =>
+          item.product.id === product.id
+            ? {
+                ...item,
+                quantity: item.quantity + 1,
+                subtotal: (item.quantity + 1) * (product.price || 0),
+              }
+            : item,
+        )
       } else {
-        return [...prevCart, { ...product, quantity: 1 }]
+        // Add new item to cart
+        return [
+          ...prevCart,
+          {
+            product,
+            quantity: 1,
+            subtotal: product.price || 0,
+          },
+        ]
       }
     })
   }
 
   // Update cart item quantity
-  const updateQuantity = (id: number, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(id)
+  const updateQuantity = (productId: string, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      removeFromCart(productId)
       return
     }
 
-    setCart((prevCart) => prevCart.map((item) => (item.id === id ? { ...item, quantity } : item)))
+    setCart((prevCart) => {
+      return prevCart.map((item) => {
+        if (item.product.id === productId) {
+          // Check if new quantity exceeds stock
+          if (newQuantity > (item.product.stock || 0)) {
+            toast({
+              title: "Insufficient Stock",
+              description: `Only ${item.product.stock} units of ${item.product.name} available.`,
+              variant: "destructive",
+            })
+            return item
+          }
+
+          return {
+            ...item,
+            quantity: newQuantity,
+            subtotal: newQuantity * (item.product.price || 0),
+          }
+        }
+        return item
+      })
+    })
   }
 
   // Remove item from cart
-  const removeFromCart = (id: number) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id !== id))
+  const removeFromCart = (productId: string) => {
+    setCart((prevCart) => prevCart.filter((item) => item.product.id !== productId))
   }
 
-  // Calculate subtotal
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
-
-  // Calculate discount amount
-  const discountAmount = (subtotal * discountPercent) / 100
-
-  // Calculate tax amount
-  const taxableAmount = subtotal - discountAmount
-  const taxAmount = (taxableAmount * taxPercent) / 100
-
-  // Calculate total
-  const total = taxableAmount + taxAmount
+  // Clear the cart
+  const clearCart = () => {
+    setCart([])
+    setSelectedCustomer(null)
+    setPaymentMethod("cash")
+    setNotes("")
+    setDiscount(0)
+    setTax(0)
+    setSaleError(null)
+  }
 
   // Handle complete sale
-  const handleCompleteSale = () => {
-    setIsCompletingSale(true)
+  const handleCompleteSale = async () => {
+    // Reset any previous errors
+    setSaleError(null)
 
-    // Simulate processing payment
-    setTimeout(() => {
-      // Reset cart and state after successful sale
-      setCart([])
-      setSelectedCustomer(null)
-      setDiscountPercent(0)
+    // Validate customer selection
+    if (!selectedCustomer) {
+      toast({
+        title: "Customer Required",
+        description: "Please select a customer before completing the sale.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validate cart is not empty
+    if (cart.length === 0) {
+      toast({
+        title: "Empty Cart",
+        description: "Please add products to the cart before completing the sale.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setIsCompletingSale(true)
+
+      // Generate sale number
+      const saleNumber = `SALE-${Date.now().toString().slice(-6)}`
+
+      // Generate invoice number
+      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`
+
+      // Prepare sale items
+      const saleItems: SaleItem[] = cart.map((item) => ({
+        productId: item.product.id,
+        name: item.product.name,
+        price: item.product.price || 0,
+        quantity: item.quantity,
+        subtotal: item.subtotal,
+      }))
+
+      // Prepare customer data
+      const customerData = {
+        id: selectedCustomer.id,
+        name: selectedCustomer.name,
+        email: selectedCustomer.email,
+        phone: selectedCustomer.phone,
+      }
+
+      // Prepare sale data
+      const saleData = {
+        saleNumber,
+        date: Timestamp.now(),
+        customer: customerData,
+        items: saleItems,
+        subtotal,
+        discount: discountAmount,
+        tax: taxAmount,
+        total,
+        paymentMethod,
+        notes: notes || null,
+        status: "completed" as const,
+      }
+
+      console.log("Completing sale with data:", saleData)
+
+      // Add sale to Firestore
+      const saleId = await addSale(saleData)
+
+      console.log("Sale completed successfully with ID:", saleId)
+
+      // Calculate tax rate
+      const taxRate = subtotal > 0 ? (taxAmount / (subtotal - discountAmount)) * 100 : 0
+
+      // Prepare invoice data
+      const invoiceData = {
+        invoiceNumber,
+        saleId,
+        date: Timestamp.now(),
+        dueDate: Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)), // Due in 30 days
+        customer: customerData,
+        items: saleItems,
+        subtotal,
+        discount: discountAmount,
+        tax: taxAmount,
+        taxRate,
+        total,
+        notes: notes || null,
+        status: "sent" as const,
+        paymentStatus: paymentMethod === "cash" ? "paid" : ("pending" as const),
+      }
+
+      // Add invoice to Firestore
+      const invoiceId = await addInvoice(invoiceData)
+
+      console.log("Invoice created successfully with ID:", invoiceId)
+
+      // Show success message
+      toast({
+        title: "Sale Completed",
+        description: `Sale #${saleNumber} has been completed successfully.`,
+      })
+
+      // Clear the cart and reset form
+      clearCart()
+
+      // Navigate to invoice details
+      router.push(`/invoices/${invoiceId}`)
+    } catch (error) {
+      console.error("Error completing sale:", error)
+
+      // Set error message
+      setSaleError(error instanceof Error ? error.message : "An unknown error occurred")
+
+      // Show error toast
+      toast({
+        title: "Sale Failed",
+        description: "There was an error completing the sale. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
       setIsCompletingSale(false)
-    }, 1500)
-  }
-
-  // Handle cancel sale
-  const handleCancelSale = () => {
-    if (cart.length === 0) return
-
-    if (confirm("Are you sure you want to cancel this sale?")) {
-      setCart([])
-      setSelectedCustomer(null)
-      setDiscountPercent(0)
     }
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Point of Sale</h2>
-      </div>
+    <div className="container mx-auto py-6">
+      <h1 className="text-3xl font-bold mb-6">Point of Sale</h1>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {/* Product Selection Section */}
-        <div className="md:col-span-2 flex flex-col gap-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
+      {saleError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{saleError}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Products Section */}
+        <div className="lg:col-span-2">
+          <Card className="shadow-md">
+            <CardHeader className=" ">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <CardTitle>Products</CardTitle>
-                <div className="flex items-center gap-2">
-                  <div className="relative w-full max-w-[240px]">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search products..."
-                      className="pl-8"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
+                <div className="relative w-full md:w-64">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search products..."
+                    className="pl-8"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
                 </div>
               </div>
-              <CardDescription>Select products to add to the current sale.</CardDescription>
             </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="All" className="w-full">
-                <TabsList className="mb-4 flex h-auto flex-wrap justify-start gap-2">
+            <CardContent className="p-4">
+              <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="mb-4 flex justify-start">
                   {categories.map((category) => (
-                    <TabsTrigger
-                      key={category}
-                      value={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className="rounded-md px-3 py-1.5"
-                    >
+                    <TabsTrigger key={category} value={category} className="capitalize">
                       {category}
                     </TabsTrigger>
                   ))}
                 </TabsList>
-
-                <TabsContent value={selectedCategory} className="mt-0">
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                    {filteredProducts.map((product) => (
-                      <Card
-                        key={product.id}
-                        className="cursor-pointer overflow-hidden transition-all hover:shadow-md"
-                        onClick={() => addToCart(product)}
-                      >
-                        <div className="aspect-square w-full overflow-hidden">
-                          <Image
-                            src={product.image || "/placeholder.svg"}
-                            alt={product.name}
-                            width={200}
-                            height={200}
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <CardContent className="p-3">
-                          <h3 className="font-medium line-clamp-1">{product.name}</h3>
-                          <p className="text-sm text-muted-foreground">{product.category}</p>
-                          <p className="mt-1 font-semibold">${product.price.toFixed(2)}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-
-                    {filteredProducts.length === 0 && (
-                      <div className="col-span-full flex h-40 items-center justify-center text-muted-foreground">
-                        No products found.
-                      </div>
-                    )}
-                  </div>
+                <TabsContent value={activeTab} className="mt-0">
+                  {productsLoading ? (
+                    <div className="flex justify-center items-center h-64">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                  ) : filteredProducts.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No products found. Try a different search or category.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                      {filteredProducts.map((product) => (
+                        <Card
+                          key={product.id}
+                          className={`cursor-pointer hover:bg-accent transition-colors ${
+                            !product.stock || product.stock <= 0 ? "opacity-50" : ""
+                          }`}
+                          onClick={() => addToCart(product)}
+                        >
+                          <CardContent className="p-3">
+                            <div className="aspect-square relative mb-2 bg-muted rounded-md overflow-hidden">
+                              {product.imageUrl || product.imageBase64 ? (
+                                <img
+                                  src={product.imageUrl || product.imageBase64 || "/placeholder.svg"}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-secondary/20">
+                                  <span className="text-muted-foreground">No image</span>
+                                </div>
+                              )}
+                              {(!product.stock || product.stock <= 0) && (
+                                <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
+                                  <Badge variant="destructive">Out of Stock</Badge>
+                                </div>
+                              )}
+                              {product.stock && product.stock <= 5 && product.stock > 0 && (
+                                <Badge variant="secondary" className="absolute top-1 right-1">
+                                  Low Stock: {product.stock}
+                                </Badge>
+                              )}
+                            </div>
+                            <h3 className="font-medium line-clamp-1">{product.name}</h3>
+                            <div className="flex justify-between items-center mt-1">
+                              <span className="text-primary font-bold">${product.price?.toFixed(2)}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {product.stock ? `${product.stock} in stock` : "No stock"}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
             </CardContent>
@@ -263,225 +415,254 @@ export default function POSPage() {
         </div>
 
         {/* Cart Section */}
-        <div className="flex flex-col gap-4">
-          <Card className="flex flex-1 flex-col">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle>Current Sale</CardTitle>
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      Select Customer
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent>
-                    <SheetHeader>
-                      <SheetTitle>Select Customer</SheetTitle>
-                      <SheetDescription>Choose a customer for this sale or add a new one.</SheetDescription>
-                    </SheetHeader>
-                    <div className="mt-6 space-y-4">
-                      <div className="relative">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="Search customers..." className="pl-8" />
-                      </div>
-                      <div className="space-y-2">
-                        {customers.map((customer) => (
-                          <Card
-                            key={customer.id}
-                            className="cursor-pointer hover:bg-muted"
-                            onClick={() => setSelectedCustomer(customer.name)}
-                          >
-                            <CardContent className="p-3">
-                              <div className="font-medium">{customer.name}</div>
-                              <div className="text-sm text-muted-foreground">{customer.email}</div>
-                              <div className="text-sm text-muted-foreground">{customer.phone}</div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                      <Button className="w-full">Add New Customer</Button>
-                    </div>
-                  </SheetContent>
-                </Sheet>
+        <div>
+          <Card className="sticky top-6 shadow-md border-primary/10">
+            <CardHeader className="bg-primary/5">
+              <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center">
+                  <ShoppingCart className="mr-2 h-5 w-5" />
+                  Cart
+                </CardTitle>
+                {cart.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={clearCart}>
+                    Clear
+                  </Button>
+                )}
               </div>
-              <CardDescription>
-                {selectedCustomer ? `Customer: ${selectedCustomer}` : "No customer selected"}
-              </CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 overflow-auto">
-              {cart.length === 0 ? (
-                <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-                  <ShoppingCart className="h-10 w-10 opacity-50" />
-                  <p>Your cart is empty</p>
-                  <p className="text-sm">Add products to begin a sale</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {cart.map((item) => (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <div className="h-12 w-12 overflow-hidden rounded-md">
-                        <Image
-                          src={item.image || "/placeholder.svg"}
-                          alt={item.name}
-                          width={48}
-                          height={48}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{item.name}</p>
-                        <p className="text-sm text-muted-foreground">${item.price.toFixed(2)}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        >
-                          <Minus className="h-3 w-3" />
-                          <span className="sr-only">Decrease</span>
-                        </Button>
-                        <span className="w-8 text-center">{item.quantity}</span>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        >
-                          <Plus className="h-3 w-3" />
-                          <span className="sr-only">Increase</span>
-                        </Button>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeFromCart(item.id)}
-                      >
-                        <X className="h-4 w-4" />
-                        <span className="sr-only">Remove</span>
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-            <Separator />
-            <CardContent className="pt-4">
-              <div className="space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>${subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Discount</span>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={discountPercent}
-                      onChange={(e) => setDiscountPercent(Number(e.target.value))}
-                      className="h-7 w-16 text-right"
-                    />
-                    <span>%</span>
-                    <span>-${discountAmount.toFixed(2)}</span>
-                  </div>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tax ({taxPercent}%)</span>
-                  <span>${taxAmount.toFixed(2)}</span>
-                </div>
-                <Separator className="my-2" />
-                <div className="flex justify-between text-lg font-semibold">
-                  <span>Total</span>
-                  <span>${total.toFixed(2)}</span>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-col gap-2">
-              <div className="w-full">
-                <Label htmlFor="payment-method" className="mb-1 block">
-                  Payment Method
-                </Label>
-                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger id="payment-method">
-                    <SelectValue placeholder="Select payment method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="credit">Credit Card</SelectItem>
-                    <SelectItem value="debit">Debit Card</SelectItem>
-                    <SelectItem value="check">Check</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex w-full gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={handleCancelSale}
-                  disabled={cart.length === 0 || isCompletingSale}
-                >
-                  Cancel Sale
-                </Button>
-                <Dialog>
+            <CardContent className="p-4">
+              {/* Customer Selection */}
+              <div className="mb-4">
+                <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button className="flex-1" disabled={cart.length === 0 || isCompletingSale}>
-                      {isCompletingSale ? "Processing..." : "Complete Sale"}
+                    <Button
+                      variant={selectedCustomer ? "outline" : "default"}
+                      className={`w-full justify-start `}
+                    >
+                      {selectedCustomer ? (
+                        <div className="flex items-center">
+                          <User className="mr-2 h-4 w-4" />
+                          <span className="truncate">
+                            {selectedCustomer.name} ({selectedCustomer.phone})
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="flex items-center">
+                          <Plus className="mr-2 h-4 w-4" />
+                          Select Customer *
+                        </span>
+                      )}
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="max-w-md">
                     <DialogHeader>
-                      <DialogTitle>Complete Sale</DialogTitle>
-                      <DialogDescription>Review the sale details before completing.</DialogDescription>
+                      <DialogTitle>Select Customer</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="rounded-md border p-4">
-                        <div className="space-y-1">
-                          <div className="flex justify-between">
-                            <span className="font-medium">Subtotal:</span>
-                            <span>${subtotal.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="font-medium">Discount ({discountPercent}%):</span>
-                            <span>-${discountAmount.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="font-medium">Tax ({taxPercent}%):</span>
-                            <span>${taxAmount.toFixed(2)}</span>
-                          </div>
-                          <Separator className="my-2" />
-                          <div className="flex justify-between text-lg font-semibold">
-                            <span>Total:</span>
-                            <span>${total.toFixed(2)}</span>
-                          </div>
+                    <div className="relative mb-4">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search customers..."
+                        className="pl-8"
+                        value={customerSearchQuery}
+                        onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                      />
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto">
+                      {customersLoading ? (
+                        <div className="flex justify-center items-center h-20">
+                          <Loader2 className="h-6 w-6 animate-spin text-primary" />
                         </div>
-                      </div>
-                      <div>
-                        <p className="font-medium">Payment Method:</p>
-                        <p className="capitalize">{paymentMethod}</p>
-                      </div>
-                      {selectedCustomer && (
-                        <div>
-                          <p className="font-medium">Customer:</p>
-                          <p>{selectedCustomer}</p>
+                      ) : filteredCustomers.length === 0 ? (
+                        <div className="text-center py-4 text-muted-foreground">
+                          No customers found. Try a different search.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {filteredCustomers.map((customer) => (
+                            <div
+                              key={customer.id}
+                              className="p-2 rounded-md hover:bg-accent cursor-pointer"
+                              onClick={() => handleSelectCustomer(customer)}
+                            >
+                              <div className="font-medium">{customer.name}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {customer.phone} • {customer.email}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" type="button">
-                        Print Receipt
+                      <Button asChild>
+                        <DialogClose>Cancel</DialogClose>
                       </Button>
-                      <Button type="button" onClick={handleCompleteSale}>
-                        Confirm Payment
+                      <Button asChild>
+                        <a href="/customers/new" target="_blank" rel="noreferrer">
+                          Add New Customer
+                        </a>
                       </Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
+
+                {!selectedCustomer && (
+                  <p className="text-destructive text-sm mt-1">* Customer selection is required to complete the sale</p>
+                )}
               </div>
-            </CardFooter>
+
+              {/* Cart Items */}
+              {cart.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">Cart is empty. Add products to begin.</div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Product</TableHead>
+                          <TableHead className="text-right">Qty</TableHead>
+                          <TableHead className="text-right">Price</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {cart.map((item) => (
+                          <TableRow key={item.product.id}>
+                            <TableCell className="font-medium">{item.product.name}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                                >
+                                  -
+                                </Button>
+                                <span className="w-8 text-center">{item.quantity}</span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                                >
+                                  +
+                                </Button>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">${item.subtotal.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive"
+                                onClick={() => removeFromCart(item.product.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Cart Summary */}
+                  <div className="space-y-2 bg-muted/30 p-3 rounded-md">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span>${subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Discount (%)</span>
+                      <Input
+                        type="number"
+                        value={discount}
+                        onChange={(e) => setDiscount(Number(e.target.value))}
+                        className="w-20 text-right"
+                        min="0"
+                        max="100"
+                      />
+                    </div>
+                    {discount > 0 && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Discount Amount</span>
+                        <span>-${discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span>Tax (%)</span>
+                      <Input
+                        type="number"
+                        value={tax}
+                        onChange={(e) => setTax(Number(e.target.value))}
+                        className="w-20 text-right"
+                        min="0"
+                      />
+                    </div>
+                    {tax > 0 && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Tax Amount</span>
+                        <span>${taxAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <Separator className="my-2" />
+                    <div className="flex justify-between font-bold text-lg">
+                      <span>Total</span>
+                      <span>${total.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Payment Method */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Payment Method</label>
+                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select payment method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="credit">Credit Card</SelectItem>
+                        <SelectItem value="debit">Debit Card</SelectItem>
+                        <SelectItem value="check">Check</SelectItem>
+                        <SelectItem value="bank">Bank Transfer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Notes */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Notes (Optional)</label>
+                    <Textarea
+                      placeholder="Add notes about this sale..."
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Complete Sale Button */}
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={handleCompleteSale}
+                    disabled={isCompletingSale || !selectedCustomer || cart.length === 0}
+                  >
+                    {isCompletingSale ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Receipt className="mr-2 h-5 w-5" />
+                        Complete Sale
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
           </Card>
         </div>
       </div>

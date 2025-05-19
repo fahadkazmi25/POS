@@ -1,0 +1,77 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Default: deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+    
+    // Product images: allow authenticated users to read, admins to write
+    match /products/{imageId} {
+      // Anyone can read product images
+      allow read: if true;
+      
+      // Only authenticated users can upload product images
+      allow create: if request.auth != null 
+                    && request.resource.size < 5 * 1024 * 1024 // 5MB limit
+                    && request.resource.contentType.matches('image/.*');
+                    
+      // Only the original uploader or admins can modify/delete
+      allow update, delete: if request.auth != null && (
+        // Check if user is admin in Firestore
+        exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+    }
+    
+    // Invoice PDFs: authenticated users can access their own
+    match /invoices/{invoiceId} {
+      // Allow read if user is authenticated and invoice belongs to them
+      allow read: if request.auth != null && (
+        // Either the invoice belongs to this user or user is admin
+        invoiceId.matches(request.auth.uid + '.*') || (
+          exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == "admin"
+        )
+      );
+      
+      // Only authenticated users can create invoices
+      allow create: if request.auth != null 
+                    && request.resource.size < 10 * 1024 * 1024 // 10MB limit
+                    && request.resource.contentType.matches('application/pdf');
+    }
+    
+    // User profile images: users can manage their own
+    match /users/{userId}/{imageType} {
+      // Users can read their own images, admins can read all
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || (
+          exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == "admin"
+        )
+      );
+      
+      // Users can only upload their own profile images
+      allow create, update: if request.auth != null 
+                           && request.auth.uid == userId
+                           && request.resource.size < 2 * 1024 * 1024 // 2MB limit
+                           && request.resource.contentType.matches('image/.*');
+                           
+      // Users can delete their own images, admins can delete any
+      allow delete: if request.auth != null && (
+        request.auth.uid == userId || (
+          exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == "admin"
+        )
+      );
+    }
+    
+    // Temporary uploads folder with time-based expiration
+    match /temp/{userId}/{fileName} {
+      allow read, write: if request.auth != null 
+                         && request.auth.uid == userId
+                         && request.resource.size < 5 * 1024 * 1024 // 5MB limit
+                         && request.time < resource.timeCreated + duration.value(1, 'h'); // 1 hour TTL
+    }
+  }
+}

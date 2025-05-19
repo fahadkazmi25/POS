@@ -5,12 +5,18 @@ import { RecentSales } from "@/components/dashboard/recent-sales"
 import { LowStockAlert } from "@/components/dashboard/low-stock-alert"
 import { TopSellingProducts } from "@/components/dashboard/top-selling-products"
 import { QuickActions } from "@/components/dashboard/quick-actions"
+import { InitDatabase } from "@/components/init-database"
+
 
 export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <div className="flex gap-2">
+          {/* <InitDatabase /> */}
+          <QuickActions />
+        </div>
       </div>
       <Tabs defaultValue="daily" className="space-y-4">
         <div className="flex justify-between items-center">
@@ -19,7 +25,6 @@ export default function DashboardPage() {
             <TabsTrigger value="weekly">Weekly</TabsTrigger>
             <TabsTrigger value="monthly">Monthly</TabsTrigger>
           </TabsList>
-          <QuickActions />
         </div>
         <TabsContent value="daily" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

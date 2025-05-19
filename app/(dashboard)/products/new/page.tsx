@@ -12,15 +12,36 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useProducts } from "@/hooks/use-products"
+import type { Product } from "@/types/firestore"
+import { useToast } from "@/components/ui/use-toast"
+import { processImageForFirestore } from "@/utils/image-utils"
 
 export default function AddProductPage() {
   const router = useRouter()
+  const { addProduct } = useProducts()
+  const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [formData, setFormData] = useState<Omit<Product, "id" | "createdAt" | "updatedAt">>({
+    name: "",
+    sku: "",
+    category: "",
+    description: "",
+    price: 0,
+    purchasePrice: 0,
+    stock: 0,
+    reorderLevel: 0,
+    supplier: "",
+    supplierContact: "",
+    vehicleCompatibility: "",
+  })
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      setImageFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setImagePreview(reader.result as string)
@@ -29,15 +50,73 @@ export default function AddProductPage() {
     }
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target
+    setFormData((prev) => ({
+      ...prev,
+      [id]: ["price", "purchasePrice", "stock", "reorderLevel"].includes(id) ? Number.parseFloat(value) || 0 : value,
+    }))
+  }
+
+  const handleSelectChange = (id: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [id]: value,
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate form submission
-    setTimeout(() => {
-      setIsSubmitting(false)
+    try {
+      let imageBase64 = null
+
+      // Process image if selected
+      if (imageFile) {
+        try {
+          imageBase64 = await processImageForFirestore(imageFile)
+
+          if (!imageBase64) {
+            toast({
+              title: "Image Processing Failed",
+              description: "The image could not be processed. It may be too large.",
+              variant: "destructive",
+            })
+          }
+        } catch (error) {
+          console.error("Error processing image:", error)
+          toast({
+            title: "Image Processing Failed",
+            description: "There was an error processing the image.",
+            variant: "destructive",
+          })
+        }
+      }
+
+      // Add product to Firestore
+      await addProduct({
+        ...formData,
+        imageBase64: imageBase64 || null,
+      })
+
+      toast({
+        title: "Product Added",
+        description: "The product has been successfully added.",
+      })
+
+      // Navigate back to products page
       router.push("/products")
-    }, 1000)
+    } catch (error) {
+      console.error("Error adding product:", error)
+      toast({
+        title: "Error",
+        description: "Failed to add product. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -56,32 +135,50 @@ export default function AddProductPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Product Name</Label>
-                <Input id="name" placeholder="Enter product name" required />
+                <Input
+                  id="name"
+                  placeholder="Enter product name"
+                  required
+                  value={formData.name}
+                  onChange={handleInputChange}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="sku">SKU/Product Code</Label>
-                <Input id="sku" placeholder="Enter SKU or product code" required />
+                <Input
+                  id="sku"
+                  placeholder="Enter SKU or product code"
+                  required
+                  value={formData.sku}
+                  onChange={handleInputChange}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
-                <Textarea id="description" placeholder="Enter product description" className="min-h-[120px]" />
+                <Textarea
+                  id="description"
+                  placeholder="Enter product description"
+                  className="min-h-[120px]"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
-                <Select>
+                <Select value={formData.category} onValueChange={(value) => handleSelectChange("category", value)}>
                   <SelectTrigger id="category">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="filters">Filters</SelectItem>
-                    <SelectItem value="brakes">Brakes</SelectItem>
-                    <SelectItem value="exterior">Exterior</SelectItem>
-                    <SelectItem value="ignition">Ignition</SelectItem>
-                    <SelectItem value="fluids">Fluids</SelectItem>
-                    <SelectItem value="lighting">Lighting</SelectItem>
+                    <SelectItem value="Filters">Filters</SelectItem>
+                    <SelectItem value="Brakes">Brakes</SelectItem>
+                    <SelectItem value="Exterior">Exterior</SelectItem>
+                    <SelectItem value="Ignition">Ignition</SelectItem>
+                    <SelectItem value="Fluids">Fluids</SelectItem>
+                    <SelectItem value="Lighting">Lighting</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -96,45 +193,65 @@ export default function AddProductPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="purchase-price">Purchase Price</Label>
+                  <Label htmlFor="purchasePrice">Purchase Price</Label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">$</span>
                     <Input
-                      id="purchase-price"
+                      id="purchasePrice"
                       type="number"
                       step="0.01"
                       min="0"
                       className="pl-7"
                       placeholder="0.00"
                       required
+                      value={formData.purchasePrice || ""}
+                      onChange={handleInputChange}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="selling-price">Selling Price</Label>
+                  <Label htmlFor="price">Selling Price</Label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">$</span>
                     <Input
-                      id="selling-price"
+                      id="price"
                       type="number"
                       step="0.01"
                       min="0"
                       className="pl-7"
                       placeholder="0.00"
                       required
+                      value={formData.price || ""}
+                      onChange={handleInputChange}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="stock">Quantity in Stock</Label>
-                  <Input id="stock" type="number" min="0" placeholder="0" required />
+                  <Input
+                    id="stock"
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    required
+                    value={formData.stock || ""}
+                    onChange={handleInputChange}
+                  />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="reorder-level">Reorder Level</Label>
-                  <Input id="reorder-level" type="number" min="0" placeholder="0" required />
+                  <Label htmlFor="reorderLevel">Reorder Level</Label>
+                  <Input
+                    id="reorderLevel"
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    required
+                    value={formData.reorderLevel || ""}
+                    onChange={handleInputChange}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -142,7 +259,7 @@ export default function AddProductPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Product Image</CardTitle>
-                <CardDescription>Upload an image of the product.</CardDescription>
+                <CardDescription>Upload an image of the product (max 500KB after compression).</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col items-center justify-center gap-4">
@@ -189,21 +306,33 @@ export default function AddProductPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="supplier">Supplier</Label>
-                <Input id="supplier" placeholder="Enter supplier name" />
+                <Input
+                  id="supplier"
+                  placeholder="Enter supplier name"
+                  value={formData.supplier}
+                  onChange={handleInputChange}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="supplier-contact">Supplier Contact</Label>
-                <Input id="supplier-contact" placeholder="Enter supplier contact" />
+                <Label htmlFor="supplierContact">Supplier Contact</Label>
+                <Input
+                  id="supplierContact"
+                  placeholder="Enter supplier contact"
+                  value={formData.supplierContact}
+                  onChange={handleInputChange}
+                />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="vehicle-compatibility">Vehicle Compatibility</Label>
+              <Label htmlFor="vehicleCompatibility">Vehicle Compatibility</Label>
               <Textarea
-                id="vehicle-compatibility"
+                id="vehicleCompatibility"
                 placeholder="Enter vehicle compatibility information"
                 className="min-h-[80px]"
+                value={formData.vehicleCompatibility}
+                onChange={handleInputChange}
               />
             </div>
           </CardContent>

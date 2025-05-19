@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Filter, Plus, Search, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -25,102 +25,38 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
-// Sample customer data
-const customers = [
-  {
-    id: 1,
-    name: "John Smith",
-    email: "john.smith@example.com",
-    phone: "555-123-4567",
-    totalPurchases: 1245.67,
-    lastPurchase: "2023-05-15",
-    status: "active",
-    outstandingBalance: 0,
-  },
-  {
-    id: 2,
-    name: "Jane Doe",
-    email: "jane.doe@example.com",
-    phone: "555-987-6543",
-    totalPurchases: 876.5,
-    lastPurchase: "2023-05-10",
-    status: "active",
-    outstandingBalance: 125.3,
-  },
-  {
-    id: 3,
-    name: "Bob Johnson",
-    email: "bob.johnson@example.com",
-    phone: "555-456-7890",
-    totalPurchases: 2345.25,
-    lastPurchase: "2023-05-05",
-    status: "active",
-    outstandingBalance: 0,
-  },
-  {
-    id: 4,
-    name: "Sarah Williams",
-    email: "sarah.williams@example.com",
-    phone: "555-789-0123",
-    totalPurchases: 567.8,
-    lastPurchase: "2023-04-28",
-    status: "inactive",
-    outstandingBalance: 0,
-  },
-  {
-    id: 5,
-    name: "Michael Brown",
-    email: "michael.brown@example.com",
-    phone: "555-234-5678",
-    totalPurchases: 1890.45,
-    lastPurchase: "2023-05-12",
-    status: "active",
-    outstandingBalance: 45.75,
-  },
-  {
-    id: 6,
-    name: "Emily Davis",
-    email: "emily.davis@example.com",
-    phone: "555-345-6789",
-    totalPurchases: 765.3,
-    lastPurchase: "2023-05-08",
-    status: "active",
-    outstandingBalance: 0,
-  },
-  {
-    id: 7,
-    name: "David Wilson",
-    email: "david.wilson@example.com",
-    phone: "555-567-8901",
-    totalPurchases: 2145.6,
-    lastPurchase: "2023-05-02",
-    status: "active",
-    outstandingBalance: 0,
-  },
-  {
-    id: 8,
-    name: "Lisa Martinez",
-    email: "lisa.martinez@example.com",
-    phone: "555-678-9012",
-    totalPurchases: 432.15,
-    lastPurchase: "2023-04-25",
-    status: "inactive",
-    outstandingBalance: 78.5,
-  },
-]
+import { useCustomers } from "@/hooks/use-customers"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useToast } from "@/components/ui/use-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 export default function CustomersPage() {
+  const { customers, loading, error, deleteCustomer } = useCustomers()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [balanceFilter, setBalanceFilter] = useState("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [customerToDelete, setCustomerToDelete] = useState<string | null>(null)
+  const { toast } = useToast()
+
+  const itemsPerPage = 10
 
   // Filter customers based on search term, status, and balance
   const filteredCustomers = customers.filter((customer) => {
     const matchesSearch =
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone.includes(searchTerm)
+      (customer.phone && customer.phone.includes(searchTerm))
 
     const matchesStatus = statusFilter === "all" || customer.status === statusFilter
 
@@ -132,14 +68,59 @@ export default function CustomersPage() {
     return matchesSearch && matchesStatus && matchesBalance
   })
 
+  // Pagination
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const paginatedCustomers = filteredCustomers.slice(startIndex, startIndex + itemsPerPage)
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, statusFilter, balanceFilter])
+
+  // Handle customer deletion
+  const handleDeleteCustomer = async () => {
+    if (!customerToDelete) return
+
+    try {
+      await deleteCustomer(customerToDelete)
+      setCustomerToDelete(null)
+    } catch (error) {
+      console.error("Error deleting customer:", error)
+    }
+  }
+
   // Format date
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return "N/A"
+
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
     return new Intl.DateTimeFormat("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
     }).format(date)
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Customers</h2>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center justify-center text-center">
+              <h3 className="text-lg font-semibold text-destructive">Error loading customers</h3>
+              <p className="mt-2 text-muted-foreground">{error}</p>
+              <Button className="mt-4" onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -222,59 +203,114 @@ export default function CustomersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCustomers.map((customer) => (
-                    <TableRow key={customer.id}>
-                      <TableCell className="font-medium">{customer.name}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm">{customer.email}</span>
-                          <span className="text-sm text-muted-foreground">{customer.phone}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>${customer.totalPurchases.toFixed(2)}</TableCell>
-                      <TableCell>{formatDate(customer.lastPurchase)}</TableCell>
-                      <TableCell>
-                        <Badge variant={customer.status === "active" ? "default" : "secondary"}>
-                          {customer.status.charAt(0).toUpperCase() + customer.status.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {customer.outstandingBalance > 0 ? (
-                          <span className="text-destructive font-medium">
-                            ${customer.outstandingBalance.toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">$0.00</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Actions</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem asChild>
-                              <Link href={`/customers/${customer.id}`}>View Details</Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/customers/${customer.id}/edit`}>Edit Customer</Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/pos?customer=${customer.id}`}>New Sale</Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive">Delete Customer</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {filteredCustomers.length === 0 && (
+                  {loading ? (
+                    // Loading skeleton
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <Skeleton className="h-6 w-32" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-10 w-40" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-6 w-20" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-6 w-24" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-6 w-16" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-6 w-16" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-8 w-8 ml-auto" />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : paginatedCustomers.length > 0 ? (
+                    paginatedCustomers.map((customer) => (
+                      <TableRow key={customer.id}>
+                        <TableCell className="font-medium">{customer.name}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-sm">{customer.email}</span>
+                            <span className="text-sm text-muted-foreground">{customer.phone}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>${customer.totalPurchases?.toFixed(2) || "0.00"}</TableCell>
+                        <TableCell>{customer.lastPurchase ? formatDate(customer.lastPurchase) : "Never"}</TableCell>
+                        <TableCell>
+                          <Badge variant={customer.status === "active" ? "default" : "secondary"}>
+                            {customer.status?.charAt(0).toUpperCase() + customer.status?.slice(1) || "Unknown"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {customer.outstandingBalance > 0 ? (
+                            <span className="text-destructive font-medium">
+                              ${customer.outstandingBalance.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">$0.00</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem asChild>
+                                <Link href={`/customers/${customer.id}`}>View Details</Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/customers/${customer.id}/edit`}>Edit Customer</Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/pos?customer=${customer.id}`}>New Sale</Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onSelect={(e) => {
+                                      e.preventDefault()
+                                      setCustomerToDelete(customer.id)
+                                    }}
+                                  >
+                                    Delete Customer
+                                  </DropdownMenuItem>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete the customer and all
+                                      associated data.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel onClick={() => setCustomerToDelete(null)}>
+                                      Cancel
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleDeleteCustomer}>Delete</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
                     <TableRow>
                       <TableCell colSpan={7} className="h-24 text-center">
                         No customers found.
@@ -285,27 +321,54 @@ export default function CustomersPage() {
               </Table>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing <strong>1</strong> to <strong>{filteredCustomers.length}</strong> of{" "}
-                <strong>{filteredCustomers.length}</strong> customers
+            {filteredCustomers.length > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing <strong>{startIndex + 1}</strong> to{" "}
+                  <strong>{Math.min(startIndex + itemsPerPage, filteredCustomers.length)}</strong> of{" "}
+                  <strong>{filteredCustomers.length}</strong> customers
+                </div>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                      />
+                    </PaginationItem>
+                    {Array.from({ length: Math.min(totalPages, 5) }).map((_, i) => {
+                      let pageNumber = i + 1
+
+                      // Adjust page numbers for pagination with many pages
+                      if (totalPages > 5) {
+                        if (currentPage > 3 && currentPage < totalPages - 1) {
+                          pageNumber = currentPage - 2 + i
+                        } else if (currentPage >= totalPages - 1) {
+                          pageNumber = totalPages - 4 + i
+                        }
+                      }
+
+                      return (
+                        <PaginationItem key={i}>
+                          <PaginationLink
+                            onClick={() => setCurrentPage(pageNumber)}
+                            isActive={currentPage === pageNumber}
+                          >
+                            {pageNumber}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    })}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious href="#" />
-                  </PaginationItem>
-                  <PaginationItem>
-                    <PaginationLink href="#" isActive>
-                      1
-                    </PaginationLink>
-                  </PaginationItem>
-                  <PaginationItem>
-                    <PaginationNext href="#" />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>

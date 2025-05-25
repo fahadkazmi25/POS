@@ -70,67 +70,76 @@ export function useSales() {
   }, [toast])
 
   const addSale = async (saleData: Omit<Sale, "id">): Promise<string> => {
-    try {
-      // Sanitize data to replace undefined with null
-      const sanitizedSale = Object.entries(saleData).reduce(
-        (acc, [key, value]) => {
-          acc[key] = value === undefined ? null : value
-          return acc
-        },
-        {} as Record<string, any>,
+  try {
+    // Sanitize data
+    const sanitizedSale = Object.entries(saleData).reduce(
+      (acc, [key, value]) => {
+        acc[key] = value === undefined ? null : value
+        return acc
+      },
+      {} as Record<string, any>,
+    )
+
+    if (!(sanitizedSale.date instanceof Timestamp)) {
+      sanitizedSale.date = Timestamp.fromDate(
+        sanitizedSale.date instanceof Date ? sanitizedSale.date : new Date(sanitizedSale.date),
       )
+    }
 
-      // Ensure date is properly formatted
-      if (!(sanitizedSale.date instanceof Timestamp)) {
-        sanitizedSale.date = Timestamp.fromDate(
-          sanitizedSale.date instanceof Date ? sanitizedSale.date : new Date(sanitizedSale.date),
-        )
-      }
+    sanitizedSale.createdAt = serverTimestamp()
 
-      // Add created timestamp
-      sanitizedSale.createdAt = serverTimestamp()
+    // Run a single transaction for everything
+    const saleId = await runTransaction(db, async (transaction) => {
+      // 1. Prepare product refs and read all stocks first
+      const productRefs = saleData.items.map((item) => doc(db, "products", item.productId))
+      const productDocs = await Promise.all(productRefs.map((ref) => transaction.get(ref)))
 
-      // Add the sale document
-      const docRef = await addDoc(collection(db, "sales"), sanitizedSale)
-
-      // Update product stock levels
-      await runTransaction(db, async (transaction) => {
-        for (const item of saleData.items) {
-          const productRef = doc(db, "products", item.productId)
-          const productDoc = await transaction.get(productRef)
-
-          if (!productDoc.exists()) {
-            throw new Error(`Product ${item.productId} not found`)
-          }
-
-          const productData = productDoc.data() as Product
-          const newStock = (productData.stock || 0) - item.quantity
-
-          if (newStock < 0) {
-            throw new Error(`Insufficient stock for ${productData.name}`)
-          }
-
-          transaction.update(productRef, { stock: newStock })
+      // 2. Check stock availability
+      productDocs.forEach((productDoc, idx) => {
+        if (!productDoc.exists()) {
+          throw new Error(`Product ${saleData.items[idx].productId} not found`)
+        }
+        const productData = productDoc.data() as Product
+        const newStock = (productData.stock || 0) - saleData.items[idx].quantity
+        if (newStock < 0) {
+          throw new Error(`Insufficient stock for ${productData.name}`)
         }
       })
 
-      toast({
-        title: "Sale Completed",
-        description: `Sale #${saleData.saleNumber} has been completed successfully`,
+      // 3. Update stock for all products
+      productDocs.forEach((productDoc, idx) => {
+        const productRef = productRefs[idx]
+        const productData = productDoc.data() as Product
+        const newStock = (productData.stock || 0) - saleData.items[idx].quantity
+        transaction.update(productRef, { stock: newStock })
       })
 
-      return docRef.id
-    } catch (error) {
-      console.error("Error adding sale:", error)
-      const errorMessage = error instanceof Error ? error.message : "Failed to complete sale"
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      })
-      throw error
-    }
+      // 4. Add the sale document
+      const salesCollectionRef = collection(db, "sales")
+      const newSaleRef = doc(salesCollectionRef) // auto ID
+      transaction.set(newSaleRef, sanitizedSale)
+
+      return newSaleRef.id
+    })
+
+    toast({
+      title: "Sale Completed",
+      description: `Sale #${saleData.saleNumber} has been completed successfully`,
+    })
+
+    return saleId
+  } catch (error) {
+    console.error("Error adding sale:", error)
+    const errorMessage = error instanceof Error ? error.message : "Failed to complete sale"
+    toast({
+      title: "Error",
+      description: errorMessage,
+      variant: "destructive",
+    })
+    throw error
   }
+}
+
 
   const getSale = async (id: string): Promise<Sale | null> => {
     try {

@@ -83,13 +83,13 @@ export function Overview() {
           fontSize={12}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(value) => `$${value}`}
+          tickFormatter={(value) => `Rs ${value}`}
         />
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <Tooltip
-          formatter={(value: number) => [`$${value.toFixed(2)}`, "Sales"]}
+        {/* <Tooltip
+          formatter={(value: number) => [`Rs${value.toFixed(2)}`, "Sales"]}
           labelFormatter={(label) => `Time: ${label}`}
-        />
+        /> */}
         <Bar dataKey="total" fill="currentColor" radius={[4, 4, 0, 0]} className="fill-primary" />
       </BarChart>
     </ResponsiveContainer>

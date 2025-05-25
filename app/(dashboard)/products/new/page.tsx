@@ -195,14 +195,14 @@ export default function AddProductPage() {
                 <div className="space-y-2">
                   <Label htmlFor="purchasePrice">Purchase Price</Label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">$</span>
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-2 pb-[2px] text-muted-foreground">Rs</span>
                     <Input
                       id="purchasePrice"
                       type="number"
-                      step="0.01"
+                      step="0"
                       min="0"
                       className="pl-7"
-                      placeholder="0.00"
+                      placeholder="0"
                       required
                       value={formData.purchasePrice || ""}
                       onChange={handleInputChange}
@@ -213,14 +213,14 @@ export default function AddProductPage() {
                 <div className="space-y-2">
                   <Label htmlFor="price">Selling Price</Label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">$</span>
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-2 pb-[2px] text-muted-foreground">Rs</span>
                     <Input
                       id="price"
                       type="number"
-                      step="0.01"
+                      step="0"
                       min="0"
                       className="pl-7"
-                      placeholder="0.00"
+                      placeholder="0"
                       required
                       value={formData.price || ""}
                       onChange={handleInputChange}

@@ -18,6 +18,7 @@ import {
 import { db } from "@/firebase/config"
 import type { Invoice } from "@/types/firestore"
 import { useToast } from "@/components/ui/use-toast"
+import { useCallback } from "react";
 
 export function useInvoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -120,44 +121,47 @@ export function useInvoices() {
     }
   }
 
-  const getInvoice = async (id: string): Promise<Invoice | null> => {
-    try {
-      const docRef = doc(db, "invoices", id)
-      const docSnap = await getDocs(query(collection(db, "invoices"), where("__name__", "==", id)))
 
-      if (!docSnap.empty) {
-        const data = docSnap.docs[0].data()
-        return {
-          id: docSnap.docs[0].id,
-          invoiceNumber: data.invoiceNumber,
-          saleId: data.saleId,
-          date: data.date,
-          dueDate: data.dueDate,
-          customer: data.customer,
-          items: data.items,
-          subtotal: data.subtotal,
-          discount: data.discount,
-          tax: data.tax,
-          taxRate: data.taxRate,
-          total: data.total,
-          notes: data.notes || null,
-          status: data.status,
-          paymentStatus: data.paymentStatus,
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-        }
-      }
-      return null
-    } catch (error) {
-      console.error("Error getting invoice:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load invoice details",
-        variant: "destructive",
-      })
-      return null
+
+const getInvoice = useCallback(async (id: string): Promise<Invoice | null> => {
+  try {
+    const docRef = doc(db, "invoices", id);
+    const docSnap = await getDocs(query(collection(db, "invoices"), where("__name__", "==", id)));
+
+    if (!docSnap.empty) {
+      const data = docSnap.docs[0].data();
+      return {
+        id: docSnap.docs[0].id,
+        invoiceNumber: data.invoiceNumber,
+        saleId: data.saleId,
+        date: data.date,
+        dueDate: data.dueDate,
+        customer: data.customer,
+        items: data.items,
+        subtotal: data.subtotal,
+        discount: data.discount,
+        tax: data.tax,
+        taxRate: data.taxRate,
+        total: data.total,
+        notes: data.notes || null,
+        status: data.status,
+        paymentStatus: data.paymentStatus,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+      };
     }
+    return null;
+  } catch (error) {
+    console.error("Error getting invoice:", error);
+    toast({
+      title: "Error",
+      description: "Failed to load invoice details",
+      variant: "destructive",
+    });
+    return null;
   }
+}, [toast]);
+
 
   const getInvoicesBySaleId = async (saleId: string): Promise<Invoice[]> => {
     try {

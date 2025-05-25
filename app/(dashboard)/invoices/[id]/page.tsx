@@ -22,33 +22,31 @@ export default function InvoiceDetailPage() {
   const { toast } = useToast()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [loading, setLoading] = useState(true)
+  console.log(loading, "Loading state for invoice detail page")
   const [error, setError] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
 
   // Fetch invoice data
-  useEffect(() => {
-    const fetchInvoice = async () => {
-      try {
-        setLoading(true)
-        const invoiceData = await getInvoice(id as string)
-        if (invoiceData) {
-          setInvoice(invoiceData)
-        } else {
-          setError("Invoice not found")
-        }
-      } catch (err) {
-        console.error("Error fetching invoice:", err)
-        setError("Failed to load invoice details")
-      } finally {
-        setLoading(false)
-      }
-    }
+useEffect(() => {
+  if (!id) return;
 
-    if (id) {
-      fetchInvoice()
+  const fetchInvoice = async () => {
+    setLoading(true);
+    try {
+      const data = await getInvoice(id);
+      if (data) setInvoice(data);
+      else setError("Invoice not found");
+    } catch {
+      setError("Failed to load invoice details");
+    } finally {
+      setLoading(false);
     }
-  }, [id, getInvoice])
+  };
+
+  fetchInvoice();
+}, [id, getInvoice]);
+
 
   // Helper function to format date
   const formatDate = (timestamp: Timestamp | undefined) => {
@@ -58,120 +56,42 @@ export default function InvoiceDetailPage() {
 
   // Handle print invoice
   const handlePrint = () => {
-    if (!printRef.current) return
+  if (!printRef.current) return
 
-    const printContents = printRef.current.innerHTML
-    const originalContents = document.body.innerHTML
+  const printContents = printRef.current.innerHTML
+  const newWindow = window.open("", "_blank", "width=800,height=600")
+  if (!newWindow) return
 
-    document.body.innerHTML = `
-      <html>
-        <head>
-          <title>Invoice #${invoice?.invoiceNumber}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-            .invoice { max-width: 800px; margin: 0 auto; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { border-top: 1px solid #ddd; }
-            .header { text-align: center; margin-bottom: 20px; }
-            .footer { margin-top: 30px; text-align: center; font-size: 14px; }
-            .totals { margin-top: 20px; }
-            .total-row { font-weight: bold; }
-            @media print {
-              body { padding: 0; }
-              button { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="invoice">
-            ${printContents}
-          </div>
-        </body>
-      </html>
-    `
+  newWindow.document.write(`
+    <html>
+      <head>
+        <title>Invoice #${invoice?.invoiceNumber}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+          .invoice { max-width: 800px; margin: 0 auto; }
+          table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+          th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+          th { border-top: 1px solid #ddd; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .footer { margin-top: 30px; text-align: center; font-size: 14px; }
+          .totals { margin-top: 20px; }
+          .total-row { font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="invoice">${printContents}</div>
+      </body>
+    </html>
+  `)
+  newWindow.document.close()
+  newWindow.focus()
 
-    window.print()
-    document.body.innerHTML = originalContents
-  }
+  newWindow.print()
+  newWindow.close()
+}
 
-  // Handle download PDF
-  const handleDownloadPDF = () => {
-    if (!invoice) return
 
-    const doc = new jsPDF()
-
-    // Add title
-    doc.setFontSize(20)
-    doc.text(`INVOICE #${invoice.invoiceNumber}`, 105, 20, { align: "center" })
-
-    // Add dates
-    doc.setFontSize(10)
-    doc.text(`Date: ${formatDate(invoice.date)}`, 20, 30)
-    doc.text(`Due Date: ${formatDate(invoice.dueDate)}`, 20, 35)
-
-    // Add company info
-    doc.setFontSize(12)
-    doc.text("Your Company Name", 20, 45)
-    doc.setFontSize(10)
-    doc.text("123 Business Street", 20, 50)
-    doc.text("City, State ZIP", 20, 55)
-    doc.text("Phone: (123) 456-7890", 20, 60)
-    doc.text("Email: info@yourcompany.com", 20, 65)
-
-    // Add customer info
-    doc.setFontSize(12)
-    doc.text("Bill To:", 120, 45)
-    doc.setFontSize(10)
-    doc.text(invoice.customer.name, 120, 50)
-    doc.text(invoice.customer.email, 120, 55)
-    doc.text(invoice.customer.phone, 120, 60)
-
-    // Add items table
-    const tableColumn = ["Item", "Price", "Qty", "Total"]
-    const tableRows = invoice.items.map((item) => [
-      item.name,
-      `$${item.price.toFixed(2)}`,
-      item.quantity.toString(),
-      `$${item.subtotal.toFixed(2)}`,
-    ])
-
-    // @ts-ignore - jspdf-autotable types are not included
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 75,
-      theme: "grid",
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [66, 66, 66] },
-    })
-
-    // Add totals
-    const finalY = (doc as any).lastAutoTable.finalY + 10
-    doc.text(`Subtotal: $${invoice.subtotal.toFixed(2)}`, 150, finalY, { align: "right" })
-    if (invoice.discount > 0) {
-      doc.text(`Discount: -$${invoice.discount.toFixed(2)}`, 150, finalY + 5, { align: "right" })
-    }
-    if (invoice.tax > 0) {
-      doc.text(`Tax: $${invoice.tax.toFixed(2)}`, 150, finalY + 10, { align: "right" })
-    }
-    doc.setFontSize(12)
-    doc.text(`Total: $${invoice.total.toFixed(2)}`, 150, finalY + 20, { align: "right" })
-
-    // Add notes
-    if (invoice.notes) {
-      doc.setFontSize(10)
-      doc.text("Notes:", 20, finalY + 30)
-      doc.text(invoice.notes, 20, finalY + 35)
-    }
-
-    // Add footer
-    doc.setFontSize(9)
-    doc.text("Thank you for your business!", 105, finalY + 45, { align: "center" })
-
-    // Save PDF
-    doc.save(`Invoice-${invoice.invoiceNumber}.pdf`)
-  }
+  
 
   // Handle mark as paid
   const handleMarkAsPaid = async () => {
@@ -206,13 +126,13 @@ export default function InvoiceDetailPage() {
     }
   }
 
-  // if (loading) {
-  //   return (
-  //     <div className="flex justify-center items-center h-[70vh]">
-  //       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-  //     </div>
-  //   )
-  // }
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-[70vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   if (error || !invoice) {
     return (
@@ -247,14 +167,14 @@ export default function InvoiceDetailPage() {
             <Printer className="mr-2 h-4 w-4" />
             Print
           </Button>
-          <Button variant="outline" onClick={handleDownloadPDF}>
+          <Button variant="outline" onClick={handlePrint}>
             <Download className="mr-2 h-4 w-4" />
             Download PDF
           </Button>
-          <Button variant="outline">
+          {/* <Button variant="outline">
             <Send className="mr-2 h-4 w-4" />
             Email Invoice
-          </Button>
+          </Button> */}
           {invoice.paymentStatus !== "paid" && (
             <Button onClick={handleMarkAsPaid} disabled={updating}>
               {updating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
@@ -290,11 +210,11 @@ export default function InvoiceDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                   <div>
                     <h3 className="font-semibold mb-2">From</h3>
-                    <p>Your Company Name</p>
-                    <p>123 Business Street</p>
-                    <p>City, State ZIP</p>
-                    <p>Phone: (123) 456-7890</p>
-                    <p>Email: info@yourcompany.com</p>
+                    <p>City Autos</p>
+                    <p>Near Iqra Academy</p>
+                    <p>Hattian Bala, AJK</p>
+                    <p>Phone: 0342-2520306</p>
+                    <p></p>
                   </div>
                   <div>
                     <h3 className="font-semibold mb-2">Bill To</h3>
@@ -318,9 +238,9 @@ export default function InvoiceDetailPage() {
                       {invoice.items.map((item, index) => (
                         <tr key={index} className="border-b">
                           <td className="py-3">{item.name}</td>
-                          <td className="text-right py-3">${item.price.toFixed(2)}</td>
+                          <td className="text-right py-3">Rs.{item.price}</td>
                           <td className="text-right py-3">{item.quantity}</td>
-                          <td className="text-right py-3">${item.subtotal.toFixed(2)}</td>
+                          <td className="text-right py-3">Rs.{item.subtotal}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -330,24 +250,24 @@ export default function InvoiceDetailPage() {
                 <div className="mt-6 ml-auto w-64">
                   <div className="flex justify-between py-1">
                     <span>Subtotal</span>
-                    <span>${invoice.subtotal.toFixed(2)}</span>
+                    <span>Rs.{invoice.subtotal}</span>
                   </div>
                   {invoice.discount > 0 && (
                     <div className="flex justify-between py-1 text-muted-foreground">
                       <span>Discount</span>
-                      <span>-${invoice.discount.toFixed(2)}</span>
+                      <span>-Rs.{invoice.discount}</span>
                     </div>
                   )}
                   {invoice.tax > 0 && (
                     <div className="flex justify-between py-1 text-muted-foreground">
                       <span>Tax</span>
-                      <span>${invoice.tax.toFixed(2)}</span>
+                      <span>Rs.{invoice.tax}</span>
                     </div>
                   )}
                   <Separator className="my-2" />
                   <div className="flex justify-between py-1 font-bold">
                     <span>Total</span>
-                    <span>${invoice.total.toFixed(2)}</span>
+                    <span>Rs.{invoice.total}</span>
                   </div>
                 </div>
 

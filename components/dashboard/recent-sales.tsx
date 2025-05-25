@@ -59,7 +59,7 @@ export function RecentSales() {
               {sale.date ? formatDistanceToNow(sale.date.toDate(), { addSuffix: true }) : "Recently"}
             </p>
           </div>
-          <div className="ml-auto font-medium">+${sale.total.toFixed(2)}</div>
+          <div className="ml-auto font-medium">+Rs.{sale.total.toFixed(2)}</div>
         </div>
       ))}
 

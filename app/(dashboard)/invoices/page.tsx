@@ -25,6 +25,16 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("all")
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
+const formatDate = (timestamp: any) => {
+    if (!timestamp) return "N/A"
+
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(date)
+  }
 
   // Filter invoices based on search, status, payment status, and date range
   const filteredInvoices = invoices.filter((invoice) => {
@@ -73,7 +83,7 @@ export default function InvoicesPage() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -111,7 +121,7 @@ export default function InvoicesPage() {
               </SelectContent>
             </Select>
 
-            <DateRangePicker date={dateRange} onDateChange={setDateRange} align="start" locale="en-US" />
+            {/* <DateRangePicker date={dateRange} onDateChange={setDateRange} align="start" locale="en-US" /> */}
           </div>
         </CardContent>
       </Card>
@@ -143,10 +153,11 @@ export default function InvoicesPage() {
                   {filteredInvoices.map((invoice) => (
                     <TableRow key={invoice.id}>
                       <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                      {/* <TableCell>{format(new Date(invoice.date), "PP")}</TableCell>
-                      <TableCell>{format(new Date(invoice.dueDate), "PP")}</TableCell> */}
+                      <TableCell>{formatDate(invoice.date)}</TableCell>
+                      <TableCell>{formatDate(invoice.dueDate)}</TableCell>
                       <TableCell>{invoice.customer.name}</TableCell>
-                      <TableCell className="text-right">${invoice.total.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">Rs.{Math.floor(invoice.total)}
+</TableCell>
                       <TableCell>
                         <Badge
                           variant={

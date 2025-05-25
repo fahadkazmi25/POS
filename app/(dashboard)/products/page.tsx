@@ -177,6 +177,7 @@ export default function ProductsPage() {
                 />
               </div>
 
+
               <div className="flex gap-2">
                 <div className="w-[180px]">
                   {/* <Select value={selectedCategory} onValueChange={setSelectedCategory}>
@@ -244,7 +245,7 @@ export default function ProductsPage() {
                       <TableCell className="font-medium">{product.name}</TableCell>
                       <TableCell>{product.sku}</TableCell>
                       <TableCell>{product.category}</TableCell>
-                      <TableCell>${product.price.toFixed(2)}</TableCell>
+                      <TableCell>Rs.{product.price}</TableCell>
                       <TableCell>
                         <Badge
                           variant={product.stock < 10 ? "destructive" : product.stock < 20 ? "warning" : "default"}

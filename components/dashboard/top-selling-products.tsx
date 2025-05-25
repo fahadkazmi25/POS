@@ -27,13 +27,13 @@ export function TopSellingProducts() {
         // Iterate through all sales and their items
         data.forEach((sale) => {
           sale.items.forEach((item) => {
-            if (!item.product || !item.product.id || !item.product.name) {
+            if (!item.productId || !item.productId || !item.name) {
               // Skip items with missing product data
               return
             }
-            const productId = item.product.id
-            const productName = item.product.name
-            const productTotal = item.total
+            const productId = item.productId
+            const productName = item.name
+            const productTotal = item.price * item.quantity
             const productQuantity = item.quantity
 
             if (productMap.has(productId)) {
@@ -104,7 +104,7 @@ export function TopSellingProducts() {
             ))}
           </Pie>
           <Tooltip
-            formatter={(value: number) => [`$${value.toFixed(2)}`, "Revenue"]}
+            formatter={(value: number) => [`Rs.${value.toFixed(2)}`, "Revenue"]}
             labelFormatter={(name) => `${name}`}
           />
           <Legend />

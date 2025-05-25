@@ -179,7 +179,7 @@ export default function ProductsPage() {
 
               <div className="flex gap-2">
                 <div className="w-[180px]">
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  {/* <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                     <SelectTrigger>
                       <SelectValue placeholder="Category" />
                     </SelectTrigger>
@@ -190,7 +190,7 @@ export default function ProductsPage() {
                         </SelectItem>
                       ))}
                     </SelectContent>
-                  </Select>
+                  </Select> */}
                 </div>
 
                 <div className="w-[180px]">
